@@ -4,7 +4,7 @@ import java.security.Provider;
 
 public class Blake2bProvider extends Provider {
     public Blake2bProvider() {
-        super("BLAKE2B", 1.0, "BLAKE2B provider");
+        super("BLAKE2B", "1.0", "BLAKE2B provider");
 
         put("MessageDigest.BLAKE2B-160", Blake2b160Digest.class.getName());
         put("MessageDigest.BLAKE2B-256", Blake2b256Digest.class.getName());
