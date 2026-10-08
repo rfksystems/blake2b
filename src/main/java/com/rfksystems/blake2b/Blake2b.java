@@ -62,6 +62,7 @@ public class Blake2b {
     // Position of last inserted byte:
     private int bufferPos = 0;// a value from 0 up to 128
 
+    private final long[] messageWords = new long[16];
     private final long[] internalState = new long[16]; // In the Blake2b paper it is called: v
 
     private long[] chainValue = null; // state vector, in the Blake2b paper it is called: h
@@ -302,14 +303,8 @@ public class Blake2b {
         fillByteArray(buffer, (byte) 0);// Holds eventually the key if input is null
         fillByteArray(internalState, 0L);
 
-        for (int i = 0; i < chainValue.length && (i * 8 < digestSize); i++) {
-            byte[] bytes = ByteUtils.long2bytes(chainValue[i]);
-
-            if ((i * 8) < (digestSize - 8)) {
-                arraycopy(bytes, 0, out, outOffset + (i * 8), 8);
-            } else {
-                arraycopy(bytes, 0, out, outOffset + (i * 8), digestSize - (i * 8));
-            }
+        for (int i = 0; i < digestSize; i++) {
+            out[outOffset + i] = (byte) (chainValue[i >>> 3] >>> ((i & 7) * 8));
         }
 
         fillByteArray(chainValue, 0L);
@@ -329,8 +324,6 @@ public class Blake2b {
         f0 = 0L;
         t0 = 0L;
         t1 = 0L;
-        chainValue = null;
-
         fillByteArray(buffer, (byte) 0);
 
         if (key != null) {
@@ -384,37 +377,36 @@ public class Blake2b {
     // initialize chainValue
     private void init() {
         if (null == chainValue) {
-            final long[] newChainValue = new long[8];
+            chainValue = new long[8];
+        }
+        final long[] initialState = chainValue;
 
-            newChainValue[0] = BLAKE2B_IV[0]
-                    ^ (digestSize | (keyLength << 8) | 0x1010000);
-            // 0x1010000 = ((fanout << 16) | (depth << 24) | (leafLength <<
-            // 32));
-            // with fanout = 1; depth = 0; leafLength = 0;
-            newChainValue[1] = BLAKE2B_IV[1];// ^ nodeOffset; with nodeOffset = 0;
-            newChainValue[2] = BLAKE2B_IV[2];// ^ ( nodeDepth | (innerHashLength <<
-            // 8) );
-            // with nodeDepth = 0; innerHashLength = 0;
+        initialState[0] = BLAKE2B_IV[0]
+                ^ (digestSize | (keyLength << 8) | 0x1010000);
+        // 0x1010000 = ((fanout << 16) | (depth << 24) | (leafLength <<
+        // 32));
+        // with fanout = 1; depth = 0; leafLength = 0;
+        initialState[1] = BLAKE2B_IV[1];// ^ nodeOffset; with nodeOffset = 0;
+        initialState[2] = BLAKE2B_IV[2];// ^ ( nodeDepth | (innerHashLength <<
+        // 8) );
+        // with nodeDepth = 0; innerHashLength = 0;
 
-            newChainValue[3] = BLAKE2B_IV[3];
+        initialState[3] = BLAKE2B_IV[3];
 
-            newChainValue[4] = BLAKE2B_IV[4];
-            newChainValue[5] = BLAKE2B_IV[5];
+        initialState[4] = BLAKE2B_IV[4];
+        initialState[5] = BLAKE2B_IV[5];
 
-            if (null != salt) {
-                newChainValue[4] ^= (ByteUtils.bytes2long(salt, 0));
-                newChainValue[5] ^= (ByteUtils.bytes2long(salt, 8));
-            }
+        if (null != salt) {
+            initialState[4] ^= (ByteUtils.bytes2long(salt, 0));
+            initialState[5] ^= (ByteUtils.bytes2long(salt, 8));
+        }
 
-            newChainValue[6] = BLAKE2B_IV[6];
-            newChainValue[7] = BLAKE2B_IV[7];
+        initialState[6] = BLAKE2B_IV[6];
+        initialState[7] = BLAKE2B_IV[7];
 
-            if (null != personalization) {
-                newChainValue[6] ^= (ByteUtils.bytes2long(personalization, 0));
-                newChainValue[7] ^= (ByteUtils.bytes2long(personalization, 8));
-            }
-
-            chainValue = newChainValue;
+        if (null != personalization) {
+            initialState[6] ^= (ByteUtils.bytes2long(personalization, 0));
+            initialState[7] ^= (ByteUtils.bytes2long(personalization, 8));
         }
     }
 
@@ -433,7 +425,7 @@ public class Blake2b {
 
         initializeInternalState();
 
-        long[] m = new long[16];
+        final long[] m = messageWords;
         
         for (int j = 0; j < 16; j++) {
             m[j] = ByteUtils.bytes2long(message, messagePos + j * 8);
@@ -472,29 +464,30 @@ public class Blake2b {
         for (int offset = 0; offset < chainValue.length; offset++) {
             chainValue[offset] = chainValue[offset] ^ internalState[offset] ^ internalState[offset + 8];
         }
+        fillByteArray(messageWords, 0L);
     }
 
     private void G(long m1, long m2, int posA, int posB, int posC, int posD) {
         internalState[posA] = internalState[posA] + internalState[posB] + m1;
-        internalState[posD] = ByteUtils.rotr64(
+        internalState[posD] = Long.rotateRight(
                 internalState[posD] ^ internalState[posA],
                 32
         );
 
         internalState[posC] = internalState[posC] + internalState[posD];
-        internalState[posB] = ByteUtils.rotr64(
+        internalState[posB] = Long.rotateRight(
                 internalState[posB] ^ internalState[posC],
                 24
         ); // replaces 25 of BLAKE
 
         internalState[posA] = internalState[posA] + internalState[posB] + m2;
-        internalState[posD] = ByteUtils.rotr64(
+        internalState[posD] = Long.rotateRight(
                 internalState[posD] ^ internalState[posA],
                 16
         );
 
         internalState[posC] = internalState[posC] + internalState[posD];
-        internalState[posB] = ByteUtils.rotr64(
+        internalState[posB] = Long.rotateRight(
                 internalState[posB] ^ internalState[posC],
                 63
         ); // replaces 11 of BLAKE
